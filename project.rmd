@@ -1,0 +1,142 @@
+# Read the dataset
+Dataset1<- read.csv("C:/Users/Anudeep/LPU/R programming internship/archive/airbnblistings_NYC.csv") 
+summary(Dataset1) 
+
+#load necessary packages used for data manipulation and transformation
+library(dplyr)
+
+head(Dataset1)
+
+# Data Cleaning: Remove 'neighbourhood_group' column and rows with NA values
+Dataset1 <- Dataset1 %>%
+  select(-neighbourhood_group) %>% 
+  na.omit()
+
+# Calculate the interquartile range (IQR) for 'price'
+Q1 <- quantile(Dataset1$price, 0.25, na.rm = TRUE)
+Q3 <- quantile(Dataset1$price, 0.75, na.rm = TRUE)
+IQR <- Q3 - Q1
+
+# Calculate the lower and upper bounds
+lower_bound <- Q1 - 1.5 * IQR
+upper_bound <- Q3 + 1.5 * IQR
+
+# Impute outliers in 'price' with the median price Replaces outlier prices with the median price
+median_price <- median(Dataset1$price, na.rm = TRUE)
+Dataset1 <- Dataset1 %>%
+  mutate(price = ifelse(price < lower_bound | price > upper_bound, median_price, price))
+
+# View the cleaned dataset summary
+summary(Dataset1)
+
+#load necessary packages
+library(corrplot)
+
+# Calculate correlations for numerical variables
+correlations <- cor(Dataset1 %>% select(price, minimum_nights, number_of_reviews, reviews_per_month, calculated_host_listings_count, availability_365), use = "complete.obs")
+
+# Plot correlations the correlation matrix for selected numerical columns and visulization corrplot
+corrplot(correlations, method = "circle")
+
+# Histograms for numerical variables it displays variables such as price, minimum nights and availability
+par(mfrow = c(2, 3))  # Set up a 2x3 grid for plotting
+
+hist(Dataset1$price, main = "Distribution of Price", xlab = "Price", col = "blue")
+hist(Dataset1$minimum_nights, main = "Distribution of Minimum Nights", xlab = "Minimum Nights", col = "green")
+hist(Dataset1$availability_365, main = "Distribution of Availability", xlab = "Availability (days)", col = "pink")
+
+# Scatter plots to explore relationships between variables
+par(mfrow = c(2, 3))  # Set up a 2x3 grid for plotting
+
+plot(number_of_reviews ~ price, data = Dataset1, main = "Price vs Number of Reviews", col = "blue")
+plot(minimum_nights ~ price, data = Dataset1, main = "Price vs Minimum Nights", col = "green")
+
+# Boxplots for numerical variables to identify distribution and outliers for numerical variables
+par(mfrow = c(2, 3))  # Set up a 2x3 grid for plotting
+boxplot(Dataset1$reviews_per_month, main = "Boxplot of Reviews per Month", col = "purple")
+boxplot(Dataset1$calculated_host_listings_count, main = "Boxplot of Host Listings Count", col = "orange")
+boxplot(Dataset1$availability_365, main = "Boxplot of Availability", col = "pink")
+
+#install or load necessary packages
+install.packages("geosphere")
+
+library(geosphere)
+library(dplyr)
+
+# Coordinates of Times Square, NYC
+times_square_lat <- 40.7580
+times_square_lon <- -73.9855
+
+# Perform feature engineering
+Dataset1 <- Dataset1 %>%
+  mutate(
+    # Calculate distance from each listing to Times Square
+    distance_to_times_square = distHaversine(
+      matrix(c(longitude, latitude), ncol = 2),
+      matrix(c(times_square_lon, times_square_lat), ncol = 2)
+    ) / 1000,  
+    # Distance in kilometers
+
+    # Convert 'last_review' to Date type
+    last_review = as.Date(last_review),
+
+    # Create a feature representing the number of days since the last review
+    days_since_last_review = as.numeric(Sys.Date() - last_review),
+
+    # Create a feature representing the average number of reviews per month
+    review_rate_per_month = ifelse(number_of_reviews > 0, number_of_reviews / days_since_last_review * 30, 0),
+
+    # Encode 'room_type' as a numerical variable
+    room_type_encoded = as.numeric(factor(room_type))
+  )
+
+# Inspect the new features
+head(Dataset1 %>% select(distance_to_times_square, days_since_last_review, review_rate_per_month, room_type_encoded))
+
+# Print the structure of the updated dataset to verify new features
+str(Dataset1)
+
+# Install and load necessary packages
+
+install.packages("caTools")
+
+install.packages("randomForest")
+
+library(caTools)
+library(randomForest)
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Split the data into training (70%) and testing (30%) sets
+split <- sample.split(Dataset1$price, SplitRatio = 0.7)
+training_set <- subset(Dataset1, split == TRUE)
+testing_set <- subset(Dataset1, split == FALSE)
+
+# Build Linear Regression model
+linear_model <- lm(price ~ distance_to_times_square + days_since_last_review + review_rate_per_month + room_type_encoded, data = training_set)
+
+# Build Random Forest model
+random_forest_model <- randomForest(price ~ distance_to_times_square + days_since_last_review + review_rate_per_month + room_type_encoded, data = training_set, ntree = 100)
+
+# Predict on the test set
+linear_predictions <- predict(linear_model, newdata = testing_set)
+random_forest_predictions <- predict(random_forest_model, newdata = testing_set)
+
+# Calculate RMSE for both models
+linear_rmse <- sqrt(mean((linear_predictions - testing_set$price)^2))
+random_forest_rmse <- sqrt(mean((random_forest_predictions - testing_set$price)^2))
+
+# Print RMSE values
+cat("Linear Regression RMSE:", linear_rmse, "\n")
+cat("Random Forest RMSE:", random_forest_rmse, "\n")
+
+# Visualize Linear Regression Performance
+plot(testing_set$price, linear_predictions, main = "Linear Regression: Actual vs Predicted", xlab = "Actual Prices", ylab = "Predicted Prices", col = "blue")
+abline(0, 1, col = "red")  # y = x line for reference
+
+# Visualize Random Forest Performance plots the actual vs predicted prices for both the linearreggression  and random fore along with a reference line(y=x)
+plot(testing_set$price, random_forest_predictions, main = "Random Forest: Actual vs Predicted", xlab = "Actual Prices", ylab = "Predicted Prices", col = "green")
+abline(0, 1, col = "red")  # y = x line for reference
+
+
